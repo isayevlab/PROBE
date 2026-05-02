@@ -4,8 +4,6 @@ Official code for:
 
 > **Knowing when to trust machine-learned interatomic potentials**  
 > Shams Mehdi, Ilkwon Cho, Olexandr Isayev  
-> *Nature Machine Intelligence* (2026)  
-> [[Paper]]() · [[arXiv]]()
 
 ---
 
