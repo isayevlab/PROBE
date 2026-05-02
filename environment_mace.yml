@@ -1,0 +1,17 @@
+name: probe_mace
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pytorch>=2.1
+  - pytorch-cuda=12.1
+  - numpy
+  - pip
+  - pip:
+    - tqdm
+    - ase
+    - e3nn
+    - mace-torch

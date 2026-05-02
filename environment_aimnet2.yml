@@ -1,0 +1,22 @@
+name: probe_aimnet2
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pytorch>=2.1
+  - pytorch-cuda=12.1
+  - numpy
+  - pip
+  - pip:
+    - tqdm
+    - omegaconf
+    - seaborn
+    - scikit-learn
+    - umap-learn
+    - rdkit
+    # AIMNet2 must be installed separately:
+    # git clone https://github.com/isayevlab/AIMNet2
+    # pip install -e AIMNet2/
