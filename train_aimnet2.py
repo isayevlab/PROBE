@@ -20,9 +20,9 @@ from probe.train import run_training, compute_error_boundary, scalar_to_bin_inde
 # ============================================================
 CONFIG = {
     # Paths
-    'checkpoint':        '/work/hdd/bbjt/smehdi1/baseline/aimnet2_b973c_3_curate_nodisp.pt',
-    'arch_yaml':         '/work/nvme/bbjt/smehdi1/aimnet2_roman/aimnet/models/aimnet2.yaml',
-    'inference_cfg':     '/work/nvme/bbjt/smehdi1/notebooks/UQ_configs/UQ_aimnet2_20M_b973c_4M_test.yaml',
+    'checkpoint':        'aimnet2_b973c_3_curate_nodisp.pt',
+    'arch_yaml':         'aimnet2.yaml',
+    'inference_cfg':     'UQ_aimnet2_20M_b973c_4M_test.yaml',
     'output_dir':        './probe_aimnet2_outputs',
 
     # Device
