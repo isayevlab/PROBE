@@ -121,12 +121,19 @@ class PROBEModel(nn.Module):
         self.mol_attention_norm = nn.LayerNorm(atom_encoder_output_dim)
 
         # mean-pool (D) + max-pool (D) + energy (1) + n_atoms (1)
-        pool_dim = atom_encoder_output_dim * 2 + 2
-        self.proj = nn.Linear(pool_dim, 256)          # → molecular embedding
+        pool_dim  = atom_encoder_output_dim * 2 + 2
+        embed_dim = classifier_hidden[0]              # molecular embedding dim (256)
 
-        self.classifier = build_mlp(
-            256, classifier_hidden, n_classes, dropout,
-            use_layernorm=True,
+        # proj is the raw molecular embedding (= first Linear of the notebook's
+        # classifier). The LayerNorm/GELU/Dropout that the notebook applied
+        # *after* that Linear become the head of the classifier, so the overall
+        # stack is identical to build_mlp(pool_dim, classifier_hidden, n_classes)
+        # while still exposing the embedding.
+        self.proj = nn.Linear(pool_dim, embed_dim)    # → molecular embedding
+        self.classifier = nn.Sequential(
+            nn.LayerNorm(embed_dim), nn.GELU(), nn.Dropout(dropout),
+            *build_mlp(embed_dim, classifier_hidden[1:], n_classes, dropout,
+                       use_layernorm=True),
         )
         self._last_attention_weights = None
 
@@ -150,7 +157,7 @@ class PROBEModel(nn.Module):
     def pool_and_classify(self, attended: torch.Tensor,
                           atom_mask: torch.Tensor,
                           energy: torch.Tensor = None,
-                          return_embeddings: bool = False):
+                          return_embeddings: bool = True):
         """
         Pooling → projection → classifier.
 
@@ -190,14 +197,15 @@ class PROBEModel(nn.Module):
     def forward(self, atom_feats: torch.Tensor, atom_mask: torch.Tensor,
                 energy: torch.Tensor = None,
                 return_attention: bool = False,
-                return_embeddings: bool = False):
+                return_embeddings: bool = True):
         """
         Args:
             atom_feats: [B, N, backbone_dim]
             atom_mask:  [B, N] bool  (True = real atom, False = padding)
             energy:     [B] MLIP predicted energy (eV)
         Returns:
-            logits [B, 2]
+            logits [B, 2], or (logits, embedding [B, 256]) when
+            return_embeddings=True (the default).
         """
         attended = self.encode_atoms(atom_feats, atom_mask)
         out = self.pool_and_classify(attended, atom_mask, energy,
@@ -217,7 +225,8 @@ class PROBEModel(nn.Module):
 
         Returns: [B, N] importance scores summing to 1 per molecule.
         """
-        _, attn_w = self.forward(atom_feats, atom_mask, return_attention=True)
+        _, attn_w = self.forward(atom_feats, atom_mask, return_attention=True,
+                                 return_embeddings=False)
         # attn_w: [B, H, N, N] — sum over query dim (dim=2) = received attention
         importance = attn_w.mean(dim=1).sum(dim=1)   # [B, N]
         importance = importance * atom_mask.float()

@@ -21,9 +21,9 @@ from probe.train import run_training, compute_error_boundary
 # ============================================================
 CONFIG = {
     # Paths
-    'mace_model_path':   '/path/to/MACE-OFF23_large.model',
-    'train_xyz':         '/path/to/train.xyz',
-    'test_xyz':          '/path/to/test.xyz',
+    'mace_model_path': '/work/nvme/bbjt/smehdi1/mace_data/MACE-OFF23_large.model',
+    'train_xyz': '/work/nvme/bbjt/smehdi1/mace_data/train_large_neut_no_bad_clean.xyz',
+    'test_xyz': '/work/nvme/bbjt/smehdi1/mace_data/test_large_neut_all.xyz',
     'output_dir':        './probe_mace_outputs',
 
     # Device

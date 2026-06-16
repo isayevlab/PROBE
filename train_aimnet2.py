@@ -20,9 +20,9 @@ from probe.train import run_training, compute_error_boundary, scalar_to_bin_inde
 # ============================================================
 CONFIG = {
     # Paths
-    'checkpoint':        '/path/to/aimnet2_checkpoint.pt',
-    'arch_yaml':         '/path/to/aimnet2.yaml',
-    'inference_cfg':     '/path/to/UQ_aimnet2_config.yaml',
+    'checkpoint':        '/work/hdd/bbjt/smehdi1/baseline/aimnet2_b973c_3_curate_nodisp.pt',
+    'arch_yaml':         '/work/nvme/bbjt/smehdi1/aimnet2_roman/aimnet/models/aimnet2.yaml',
+    'inference_cfg':     '/work/nvme/bbjt/smehdi1/notebooks/UQ_configs/UQ_aimnet2_20M_b973c_4M_test.yaml',
     'output_dir':        './probe_aimnet2_outputs',
 
     # Device
@@ -96,12 +96,11 @@ def main():
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"PROBE parameters: {total_params:,}")
 
-    # 5. Define process function (wraps AIMNet2-specific batch extraction,
-    #    including charge injection)
+    # 5. Define process function (wraps AIMNet2-specific batch extraction).
+    #    Returns the 6-tuple *with* charges so the training loop can feed them
+    #    into the charge-injection layer (see AIMNet2PROBE.forward).
     def process_fn(batch, dev):
-        atom_feats, atom_mask, pred_e, true_e, n_atoms, charges = \
-            process_batch_aimnet2(batch, dev, aimnet2)
-        return atom_feats, atom_mask, pred_e, true_e, n_atoms
+        return process_batch_aimnet2(batch, dev, aimnet2)
 
     # 6. Train
     history = run_training(

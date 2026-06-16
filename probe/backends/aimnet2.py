@@ -65,12 +65,15 @@ def process_batch_aimnet2(batch, device: str, aimnet2_model):
     with torch.no_grad():
         out = aimnet2_model(x_dev)
 
-    atom_mask   = x_dev['numbers'] > 0           # [B, N]
-    atom_feats  = out['aim']                      # [B, N, 256]
-    charges     = out['charges']                  # [B, N]
-    pred_energy = out['energy']                   # [B]
-    true_energy = y_dev['energy']                 # [B]
-    n_atoms     = atom_mask.sum(dim=1).float()    # [B]
+    # AIMNet2 runs in float64; cast head inputs to float32 so they match the
+    # PROBE head params (otherwise torch.cat promotes the pooled vector to
+    # Double and the Linear layers raise a dtype mismatch).
+    atom_mask   = x_dev['numbers'] > 0                  # [B, N]
+    atom_feats  = out['aim'].float()                    # [B, N, 256]
+    charges     = out['charges'].float()                # [B, N]
+    pred_energy = out['energy'].float()                 # [B]
+    true_energy = y_dev['energy'].float()               # [B]
+    n_atoms     = atom_mask.sum(dim=1).float()          # [B]
 
     return atom_feats, atom_mask, pred_energy, true_energy, n_atoms, charges
 
@@ -97,14 +100,18 @@ class AIMNet2PROBE(PROBEModel):
             nn.GELU(),
         )
 
-    def forward(self, atom_feats, atom_mask, energy=None,
-                charges=None, **kwargs):
+    def forward(self, atom_feats, atom_mask, energy=None, charges=None,
+                return_attention=False, return_embeddings=True):
         """
         Args:
             atom_feats: [B, N, 256]  AIM vectors
             atom_mask:  [B, N] bool
             energy:     [B]
             charges:    [B, N]  partial charges from AIMNet2
+        Returns:
+            logits, or (logits, embedding) when return_embeddings=True (default).
+            If return_attention=True, attention weights are inserted before the
+            embedding: (logits, attn) or (logits, attn, embedding).
         """
         z = self.atom_encoder(atom_feats)
         if charges is not None:
@@ -115,4 +122,12 @@ class AIMNet2PROBE(PROBEModel):
                                                return_attention=True)
         attended = self.mol_attention_norm(attended + z)
         self._last_attention_weights = attn_w.detach()
-        return self.pool_and_classify(attended, atom_mask, energy, **kwargs)
+
+        out = self.pool_and_classify(attended, atom_mask, energy,
+                                     return_embeddings=return_embeddings)
+        if return_attention:
+            if return_embeddings:
+                logits, emb = out
+                return logits, self._last_attention_weights, emb
+            return out, self._last_attention_weights
+        return out

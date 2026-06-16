@@ -92,8 +92,11 @@ def train_epoch(model, process_batch_fn: Callable, dataloader,
     total_loss, n_batches = 0.0, 0
 
     for batch in tqdm(dataloader, desc='Training', leave=False):
-        atom_feats, atom_mask, pred_energy, true_energy, n_atoms = \
-            process_batch_fn(batch, device)
+        # process_batch_fn returns 5 elements, or 6 with per-atom charges
+        # (AIMNet2). MACE returns 5 → charges stays None.
+        out = process_batch_fn(batch, device)
+        atom_feats, atom_mask, pred_energy, true_energy, n_atoms = out[:5]
+        charges = out[5] if len(out) > 5 else None
 
         abs_errors = torch.abs(true_energy - pred_energy)
         target_classes = scalar_to_bin_index(abs_errors, error_bins)
@@ -106,9 +109,15 @@ def train_epoch(model, process_batch_fn: Callable, dataloader,
         pred_energy_v = pred_energy[valid]
         target_v      = target_classes[valid]
         n_atoms_v     = n_atoms[valid]
+        charges_v     = charges[valid] if charges is not None else None
+
+        # Only pass charges when present — the base PROBEModel (MACE) does not
+        # accept a `charges` kwarg.
+        extra = {} if charges_v is None else {'charges': charges_v}
 
         optimizer.zero_grad()
-        logits = model(atom_feats_v, atom_mask_v, energy=pred_energy_v)
+        logits = model(atom_feats_v, atom_mask_v, energy=pred_energy_v,
+                       return_embeddings=False, **extra)
         loss = uncertainty_loss_fn(logits, target_v, n_atoms_v,
                                    class_weights, label_smoothing)
         loss.backward()
@@ -139,8 +148,9 @@ def evaluate(model, process_batch_fn: Callable, dataloader,
     all_logits, all_targets, all_errors, all_n_atoms = [], [], [], []
 
     for batch in tqdm(dataloader, desc='Evaluating', leave=False):
-        atom_feats, atom_mask, pred_energy, true_energy, n_atoms = \
-            process_batch_fn(batch, device)
+        out = process_batch_fn(batch, device)
+        atom_feats, atom_mask, pred_energy, true_energy, n_atoms = out[:5]
+        charges = out[5] if len(out) > 5 else None
 
         abs_errors = torch.abs(true_energy - pred_energy)
         target_classes = scalar_to_bin_index(abs_errors, error_bins)
@@ -154,8 +164,11 @@ def evaluate(model, process_batch_fn: Callable, dataloader,
         target_v      = target_classes[valid]
         errors_v      = abs_errors[valid]
         n_atoms_v     = n_atoms[valid]
+        charges_v     = charges[valid] if charges is not None else None
+        extra = {} if charges_v is None else {'charges': charges_v}
 
-        logits = model(atom_feats_v, atom_mask_v, energy=pred_energy_v)
+        logits = model(atom_feats_v, atom_mask_v, energy=pred_energy_v,
+                       return_embeddings=False, **extra)
 
         all_logits.append(logits.cpu())
         all_targets.append(target_v.cpu())
@@ -253,10 +266,23 @@ def run_training(model, process_batch_fn: Callable,
         history['val_mcc'].append(val_results['mcc'])
         history['val_f1'].append(val_results['f1'])
 
+        # ALL molecules
         print(f"Epoch {epoch:4d} | train_loss={train_loss:.4f} | "
-              f"val_loss={val_loss:.4f} | acc={val_results['accuracy']:.4f} | "
-              f"mcc={val_results['mcc']:.4f} | f1={val_results['f1']:.4f} | "
+              f"val_loss={val_loss:.4f} | "
+              f"[ALL] acc={val_results['accuracy']:.4f} "
+              f"mcc={val_results['mcc']:.4f} f1={val_results['f1']:.4f} | "
               f"lr={optimizer.param_groups[0]['lr']:.2e}")
+
+        # HIGH-CONFIDENCE subset (predictions above the per-class cutoff)
+        hc = val_results.get('high_conf')
+        if hc is not None and hc.get('n_high_conf', 0) > 0:
+            print(f"           | [HIGH-CONF] "
+                  f"coverage={hc['fraction_high_conf']:.3f} "
+                  f"({hc['n_high_conf']}/{hc['n_total']}) "
+                  f"acc={hc['accuracy']:.4f} "
+                  f"mcc={hc['mcc']:.4f} f1={hc['f1']:.4f}")
+        elif high_conf_cutoffs is not None:
+            print(f"           | [HIGH-CONF] no molecules above cutoff")
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
