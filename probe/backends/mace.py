@@ -21,6 +21,7 @@ import torch.nn as nn
 
 # e3nn and MACE must be installed / on sys.path
 try:
+    os.environ['TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD'] = '1'
     from e3nn import o3
     from mace.tools import AtomicNumberTable, atomic_numbers_to_indices
     from mace.tools import torch_geometric
