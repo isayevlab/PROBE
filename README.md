@@ -39,7 +39,7 @@ PROBE/
 ---
 
 ## Installation
-# Installation commands for MLIPs depend on their respective repositories. Please check if the installation fails.
+# Installation commands for MLIPs depend on their respective repositories. Please check if the installation fails. Install PyTorch version appropriate for your GPU.
 **For MACE:**
 ```bash
 conda create -n environment_mace python=3.11
@@ -50,12 +50,12 @@ pip install mace-torch
 
 **For AIMNet2:**
 ```bash
-conda env create -f environment_aimnet2.yml
-conda activate probe_aimnet2
-
-# AIMNet2 must be installed from source:
-git clone https://github.com/isayevlab/AIMNet2
-pip install -e AIMNet2/
+conda create -n environment_aimnet2 python=3.11
+conda activate environment_aimnet2
+pip3 install torch torchvision
+pip install aimnet
+pip install "aimnet[train]"
+pip install tqdm
 ```
 
 ---
