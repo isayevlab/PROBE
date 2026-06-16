@@ -39,11 +39,13 @@ PROBE/
 ---
 
 ## Installation
-
+# Installation commands for MLIPs depend on their respective repositories. Please check if the installation fails.
 **For MACE:**
 ```bash
-conda env create -f environment_mace.yml
-conda activate probe_mace
+conda create -n environment_mace python=3.11
+conda activate environment_mace
+pip3 install torch torchvision
+pip install mace-torch
 ```
 
 **For AIMNet2:**
