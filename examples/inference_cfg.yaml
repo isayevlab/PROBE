@@ -1,0 +1,165 @@
+# required to be set
+run_name: ???
+
+data:
+    # path to train and validation datasets
+    train: 'aimnet2_b973c.h5'
+    val: null  # same data file by default
+    # sae files
+    sae:
+        energy:
+            file: 'aimnet2_b973c_curate.yaml'
+            mode: linreg
+
+    # fraction of training data to use for validation is separate val file is not provided
+    val_fraction: 0.1
+    separate_val: true
+    # in DDP mode, will load only a shard of the dataset on each worker
+    ddp_load_full_dataset: false
+
+    # data keys
+    x: [coord, numbers, charge]
+    y: [energy, forces, charges]
+
+    # dataset class definition
+    datasets:
+        train:
+            class: aimnet.data.SizeGroupedDataset
+            kwargs: {}
+        val:
+            class: aimnet.data.SizeGroupedDataset
+            kwargs: {}
+
+    # sampler class definition
+    samplers:
+        train:
+            class: aimnet.data.SizeGroupedSampler
+            kwargs:
+                # this value if for each of DDP worker, total batch size is `batch_size*world_size`
+                batch_size: 3072
+                # could be set to 'atoms', than 'batch_size' could be around 16384
+                batch_mode: molecules
+                shuffle: True
+                # for extra large datasets we want to do evaluation more often then onece per full epoch
+                # this value sets the size the epoch. `batches_per_epoch*batch_size` could be smaller or larger than the dataset size
+                # batches_per_epoch: 100
+        val:
+            class: aimnet.data.SizeGroupedSampler
+            kwargs:
+                batch_size: 2048
+                batch_mode: molecules
+                shuffle: False
+                # full dataset
+                batches_per_epoch: -1
+
+    # any additional torch.util.data.DataLoader options
+    # num_workers=0 and pin_memory=True are recommended
+    loaders:
+        train:
+            num_workers: 0
+            pin_memory: true
+        val:
+            num_workers: 0
+            pin_memory: true
+
+# definition for loss function class. Modify if trainig on different targets
+loss:
+  class: aimnet.train.loss.MTLoss
+  kwargs:
+    components:
+        energy:
+            fn: aimnet.train.loss.energy_loss_fn
+            weight: 1.0
+        forces:
+            fn: aimnet.train.loss.peratom_loss_fn
+            weight: 0.2
+            kwargs:
+                key_true: forces
+                key_pred: forces
+        charges:
+            fn: aimnet.train.loss.peratom_loss_fn
+            weight: 0.05
+            kwargs:
+                key_true: charges
+                key_pred: charges
+
+optimizer:
+    # lists of regular expressions for parameter names to enable or disable gradients
+    # force_no_grad will be processed first
+    force_no_train: []
+    force_train: []
+    class: torch.optim.RAdam
+    kwargs:
+        lr: 0.00001
+        weight_decay: 1e-8
+    # parameters with non-default optimizer settings
+    param_groups:
+        shifts:
+            re: '.*.atomic_shift.shifts.weight$'
+            weight_decay: 0.0
+
+# class definition for learning rate scheduler
+scheduler:
+    class: ignite.handlers.param_scheduler.CosineAnnealingScheduler
+    kwargs:
+      param_name: lr
+      start_value: 0.00001
+      cycle_size: 100
+      end_value: 0.0000075
+    terminate_on_low_lr: 0.0
+
+trainer:
+    # function that define trainig and validation loops
+    trainer: aimnet.train.utils.default_trainer
+    evaluator: aimnet.train.utils.default_evaluator
+    # total number of epochs to train
+    epochs: 100
+
+# perdicaly save chechpoints, set to null to disable
+checkpoint:
+    dirname: checkpoints
+    filename_prefix: ${run_name}
+    kwargs:
+        n_saved: 1
+        require_empty: False
+
+# wandb logger
+wandb:
+    init: 
+        name: ${run_name}
+        mode: offline
+        entity: null
+        project: null
+        notes: null
+    watch_model:
+        log: all
+        log_freq: 1000
+        log_graph: true
+
+# standard set of metrics. Add an entry if training on different targets
+metrics:
+    class: aimnet.train.metrics.RegMultiMetric
+    kwargs:
+        cfg:
+            energy:
+                abbr: E
+                scale: 23.06  # eV to kcal/mol
+            dipole:
+                abbr: D
+                scale: 1.0
+                mult: 3
+            quadrupole:
+                abbr: Q
+                scale: 1.0
+                mult: 6
+            charges:
+                abbr: q
+                peratom: True
+            volumes:
+                abbr: V
+                peratom: True
+            forces:
+                abbr: F
+                peratom: True
+                mult: 3
+                scale: 23.06

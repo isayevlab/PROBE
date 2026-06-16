@@ -84,7 +84,7 @@ python train_mace.py
 
 ### On AIMNet2
 
-1. Edit the `CONFIG` block in `train_aimnet2.py`:
+1. Edit the `CONFIG` block in `train_aimnet2.py`. Check examples for additional files that need to be passed to CONFIG (arch_yaml is used to construct the aimnet2 model, inference_cfg is used to adopt aimnet2's built-in dataloader):
 
 ```python
 CONFIG = {
