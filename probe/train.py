@@ -212,16 +212,30 @@ def run_training(model, process_batch_fn: Callable,
                  output_dir: str = './probe_outputs',
                  lr: float = 5e-5, weight_decay: float = 1e-4,
                  epochs: int = 1000,
-                 early_stopping_patience: int = 25,
-                 scheduler_patience: int = 5,
+                 early_stopping_patience: int = 10,
+                 scheduler_patience: int = 2,
                  scheduler_factor: float = 0.9,
                  min_lr: float = 5e-6,
                  gradient_clip_norm: float = 1.0,
                  class_weights=None,
                  label_smoothing: float = 0.0,
-                 high_conf_cutoffs: Optional[Dict] = None) -> dict:
+                 high_conf_cutoffs: Optional[Dict] = None,
+                 min_delta: float = 1e-5) -> dict:
     """
     Full training loop with validation, LR scheduling, and early stopping.
+
+    Args:
+        min_delta: minimum decrease in validation loss that counts as an
+            improvement. The early-stopping counter resets only when
+            val_loss < best_val_loss - min_delta; otherwise it increments.
+            Pass 0.0 to reset on any decrease at all.
+
+            This matters on large validation sets. Under a strict `<`
+            comparison a converged run still drifts by ~1e-7 between epochs
+            and almost never repeats a float exactly, so the counter keeps
+            resetting and training runs to the epoch cap long after the model
+            has stopped learning. The default 1e-5 sits well below a
+            meaningful improvement and well above that float noise.
 
     Saves:
         best_model_<timestamp>.pt  — best model by validation loss
@@ -234,10 +248,14 @@ def run_training(model, process_batch_fn: Callable,
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr,
                                   weight_decay=weight_decay)
+    # threshold/threshold_mode mirror min_delta so the LR scheduler and the
+    # early stopper agree on what counts as an improvement
     scheduler = ReduceLROnPlateau(optimizer, mode='min',
                                   factor=scheduler_factor,
                                   patience=scheduler_patience,
-                                  min_lr=min_lr)
+                                  min_lr=min_lr,
+                                  threshold=min_delta,
+                                  threshold_mode='abs')
 
     best_val_loss = float('inf')
     best_state    = None
@@ -267,11 +285,15 @@ def run_training(model, process_batch_fn: Callable,
         history['val_f1'].append(val_results['f1'])
 
         # ALL molecules
-        print(f"Epoch {epoch:4d} | train_loss={train_loss:.4f} | "
-              f"val_loss={val_loss:.4f} | "
+        # 6 decimals so the printed value reflects what min_delta compares,
+        # and a live patience counter shows progress toward early stopping
+        _next_ctr = 0 if val_loss < best_val_loss - min_delta else patience_ctr + 1
+        print(f"Epoch {epoch:4d} | train_loss={train_loss:.6f} | "
+              f"val_loss={val_loss:.6f} | "
               f"[ALL] acc={val_results['accuracy']:.4f} "
               f"mcc={val_results['mcc']:.4f} f1={val_results['f1']:.4f} | "
-              f"lr={optimizer.param_groups[0]['lr']:.2e}")
+              f"lr={optimizer.param_groups[0]['lr']:.2e} | "
+              f"patience={_next_ctr}/{early_stopping_patience}")
 
         # HIGH-CONFIDENCE subset (predictions above the per-class cutoff)
         hc = val_results.get('high_conf')
@@ -284,7 +306,10 @@ def run_training(model, process_batch_fn: Callable,
         elif high_conf_cutoffs is not None:
             print(f"           | [HIGH-CONF] no molecules above cutoff")
 
-        if val_loss < best_val_loss:
+        # An epoch counts as an improvement only if the validation loss drops
+        # by more than min_delta. Anything smaller -- including pure float
+        # noise on a large validation set -- increments the patience counter.
+        if val_loss < best_val_loss - min_delta:
             best_val_loss = val_loss
             best_epoch    = epoch
             best_state    = copy.deepcopy(model.state_dict())
@@ -301,7 +326,8 @@ def run_training(model, process_batch_fn: Callable,
             patience_ctr += 1
             if patience_ctr >= early_stopping_patience:
                 print(f"Early stopping at epoch {epoch} "
-                      f"(best epoch {best_epoch}, val_loss={best_val_loss:.4f})")
+                      f"(best epoch {best_epoch}, val_loss={best_val_loss:.6f}, "
+                      f"min_delta={min_delta:g})")
                 break
 
     if best_state is not None:

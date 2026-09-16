@@ -36,8 +36,13 @@ CONFIG = {
     'lr':                5e-5,
     'weight_decay':      1e-4,
     'epochs':            1000,
-    'early_stopping_patience': 25,
-    'scheduler_patience':      5,
+    'early_stopping_patience': 10,
+    # Minimum drop in validation loss that counts as an improvement. Smaller
+    # changes increment the early-stopping counter instead of resetting it,
+    # so a converged run stops instead of drifting at the noise level until
+    # the epoch cap. Set 0.0 for the old reset-on-any-decrease behaviour.
+    'min_delta':         1e-5,
+    'scheduler_patience':      2,
     'scheduler_factor':        0.9,
     'min_lr':            5e-6,
     'gradient_clip_norm':1.0,
@@ -115,6 +120,7 @@ def main():
         weight_decay=CONFIG['weight_decay'],
         epochs=CONFIG['epochs'],
         early_stopping_patience=CONFIG['early_stopping_patience'],
+        min_delta=CONFIG['min_delta'],
         scheduler_patience=CONFIG['scheduler_patience'],
         scheduler_factor=CONFIG['scheduler_factor'],
         min_lr=CONFIG['min_lr'],
